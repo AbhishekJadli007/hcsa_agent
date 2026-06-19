@@ -1,0 +1,17 @@
+# Optional. The lines below are commented out by default.
+#
+# Why you might uncomment this:
+# Streamlit's dev-mode file watcher walks every loaded Python module
+# (including `transformers`, pulled in transitively by sentence-transformers
+# for the cross-encoder reranker) to find local source files to watch for
+# autoreload. `transformers` lazily imports optional vision-model processors
+# that need `torchvision`, which this project does not use and does not
+# install — so the watcher logs a ModuleNotFoundError traceback for each one.
+# These are 100% harmless: the app keeps running fine, nothing crashed.
+#
+# If the noise bothers you and you don't need autoreload-on-save (i.e. you're
+# fine manually restarting `streamlit run app.py` after editing code),
+# uncomment this to silence it entirely:
+#
+[server]
+fileWatcherType = "none"

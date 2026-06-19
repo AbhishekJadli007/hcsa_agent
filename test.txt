@@ -1,0 +1,66 @@
+Test queries (run in this order)
+Watch the right-hand telemetry panel as you go. The two things that prove the fix is live: the Query Router Plan should show multiple sub-queries for multi-part questions, and the Retrieved Evidence Chunks should now include the section that was missing before.
+
+Tier B — structured / SQL (confirms structured_agent + DuckDB). Router plan should show routes: ["structured_agent"], search_queries: [], and a SQL statement in the telemetry. Q20 and Q22 are cross-table joins — the hardest SQL, watch those.
+
+What is the distribution of contractor ratings?
+
+Which contractors have a platinum contractor rating, an a_plus sustainability rating, and an excellent financial health rating?
+
+Which contractors have the highest or lowest number of completed projects?
+
+What is the average number of defects found by inspection type?
+
+What is the passing rate of the inspection by inspector company?
+
+How many development projects have been ongoing for more than 6 years?
+
+How many inactive contractors are holding ongoing development projects?
+
+How many development projects have undergone inspections after completion?
+
+Tier C — single-doc retrieval (confirms vector path). Mostly 1–2 sub-queries.
+
+A worker informed the site supervisor that the confined space entry permit had expired yesterday. They need to obtain a new permit, but the atmospheric testing equipment is not working properly. The site supervisor wants to continue the work since the permit expired just the day before. How should this situation be handled and why?
+
+What were HDB's mortgage loan receivables for flats at the end of March 2023 and March 2022?
+
+What are HDB's interest rates and repayment terms on the loans?
+
+Tier D — multi-aspect (this is the fix you asked about). Router plan should show 3–4 sub-queries. For Q2 specifically, confirm the retrieved chunks now include a reporting-timeline section (5.3), not just classification (5.1) — and that the answer presents both Level 2 and Level 3 as a borderline case with a higher faithfulness score than the 33% you saw.
+
+A worker has fallen from a height of 2.5 meters while working on a scaffold, sustaining a sprained ankle that requires six hours of hospital observation, and is released the same day with crutches and five days of modified duties. What is the severity level of this incident, and what are the reporting timelines?
+
+My team has recently been assigned to renovate an office, and I have organized the team into three groups to facilitate concurrent work. Team A is responsible for renovating the interior of an occupied building, which involves welding metal frames for new partitions. Team B is working at height to install new windows on the 12th floor, and Team C is using a crane to lift a 3-tonne load of construction materials to that same level. What permits are required, and what is the process for obtaining approval?
+
+What are the main categories of financial risks that HDB faces according to their risk management framework, and what are the specific sub-types under each major risk category for the year ended 31st March 2023?
+
+What were the Key Audit Matters for the financial years 2022/23 and 2023/24?
+
+A contractor wishes to be engaged by HCSA but scored 69.9 on the CSA-72, which is below the required threshold of 70. Are we able to engage them in any capacity? If so, what is the required approval or exception process? Additionally, have we previously granted any exceptions for contractors scoring below this threshold? Please provide any relevant cases or past examples related to contractors below the threshold.
+
+Tier E — hybrid (confirms both agents run in parallel). Router plan should show routes: ["structured_agent","vector_agent"]; the answer should have section headers separating the permit/contractor table from the policy basis.
+
+What is the current permit status and conditions compliance for the Working at Height permit issued for project UP-2025-088, and what are the permit validity requirements under our SOP?
+
+Can you give me the full performance summary for contractor CONTR-2022-047 (Pulau Ulu Building Works Pte Ltd)? I need the total number of inspections, the number of failed inspections, the overall inspection failure rate, the total defects found, the average cost overrun percentage across completed projects, and the average schedule delay in days. What was the outcome of their performance review, and what does our policy say about the process that was followed?
+
+Tier F — investigation / timeline (the hardest; 7–13 paragraphs). Confirm the verbatim entity names (Kelang Baru, Tanjung Pagar) appear in the sub-queries — that's what makes BM25 pull the right emails. For Q27, bump MULTIQUERY_MAX to 15 in config.py since it needs 13 paragraphs.
+
+We've just received a formal escalation notice from the Department of Human Capital regarding Kelang Baru Construction Pte Ltd at the Tanjung Pagar Waterfront Residences site. Can you pull together what we have on record for this contractor at this site — permits, incidents, inspection findings, anything relevant?
+
+What were the root causes for complaints from Ecofirm, Corporate services and Meridian Gardens? How can we prevent them from happening in the future?
+
+I'm seeing some inconsistencies in how incidents were classified — particularly the ones in late 2025 and early 2026. Can you cross-reference the incident reports against our policy classification criteria and tell me where the classifications look questionable? Also, why didn't the quarterly safety assessments catch this earlier?
+
+Based on everything we have, can you reconstruct a timeline of what happened with Kelang Baru at this site from the beginning, identify where the process broke down, and tell me who on our side should have acted differently?
+
+Known gap — expect these to be wrong (not a regression). These need corpus-level aggregation, which top-k retrieval can't do — the email-metadata-into-DuckDB work I flagged. Run them so you can see the failure mode, but don't be alarmed by it.
+
+How many contractors wrote in to request permits in 2025?
+
+How many accidents occurred in 2025?
+
+Count the number of unique emails sent per person per topic. I only want threads relating to Ecorebate, electrical and internet infrastructural issues and lease. Who sent out the most emails, and with how many? Break down the results by topic as well.
+
+If Tier D's Q2 still comes back as a single level or with low grounding after this, the next thing to check is whether the planner is actually emitting the borderline sub-query — paste me its Router Plan JSON and I'll trace it.

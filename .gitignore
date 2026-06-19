@@ -1,0 +1,77 @@
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / Packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# IDEs
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Environment Variables
+.env
+.env.*
+
+# Logs
+*.log
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Pytest
+.pytest_cache/
+
+# Coverage
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/
+
+# Ruff
+.ruff_cache/
+
+# Temporary files
+*.tmp
+*.swp
+
+# SQLite
+*.db
+*.sqlite3
+
+# PDFs (optional)
+*.pdf
+
+# Large models
+models/
+checkpoints/
+
+# FAISS Indexes (if generated)
+faiss_index/
+vectorstore/
+
+# Chroma DB
+chroma_db/
+chroma/
+
+# Uploaded files
+uploads/
+
+# Generated outputs
+outputs/
