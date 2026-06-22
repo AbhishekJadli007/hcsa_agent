@@ -27,7 +27,7 @@ from src.core.config import (
 )
 from src.ingestion.pdf_chunker   import chunk_directory, Chunk
 from src.ingestion.email_parser  import parse_email_directory, EmailChunk
-from src.ingestion.db_loader     import load_all_tables
+from src.ingestion.db_loader     import load_all_tables, load_emails_table
 
 # Lazy imports so build_index can be imported without optional deps loaded
 from qdrant_client import QdrantClient
@@ -118,6 +118,7 @@ def build_all(force_rebuild: bool = False):
         # Still rebuild BM25 and DuckDB
         _build_bm25(all_chunks)
         load_all_tables()
+        load_emails_table()
         return
 
     # ── 3. Embed and upsert in batches ────────────────────────────────────
@@ -149,6 +150,7 @@ def build_all(force_rebuild: bool = False):
 
     # ── 5. Load structured data ───────────────────────────────────────────
     load_all_tables()
+    load_emails_table()
 
     logger.info("=== Ingestion complete ===")
 

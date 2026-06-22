@@ -26,6 +26,19 @@ BM25_CORPUS_PATH = Path(QDRANT_PATH).parent / "bm25_corpus.pkl"
 # RRF constant (standard value)
 RRF_K = 60
 
+# ── Multi-paragraph recall knobs (token cost lives here) ──────────────────────
+# NEIGHBOR_WINDOW: after picking the best chunks, also pull each one's ±N
+#   contiguous same-document siblings. This stitches a section that got split
+#   across several small chunks (e.g. a Key Audit Matters block) back together,
+#   so an answer spanning adjacent chunks isn't truncated to whichever single
+#   chunk ranked highest. Use 2 for 512-char chunks (matters sit ~2 chunks
+#   apart); drop to 1 if you raise CHUNK_SIZE to ~1024, to save tokens.
+# MULTIQUERY_HARD_CEILING: absolute cap on chunks returned AFTER expansion, so a
+#   wide window can't blow the LLM context / Groq token budget. Trimmed by
+#   cross-encoder score, so the most relevant anchors keep their neighbours.
+NEIGHBOR_WINDOW = 2
+MULTIQUERY_HARD_CEILING = 22
+
 
 def _tokenize(text: str) -> List[str]:
     return re.findall(r"[a-z0-9]+", text.lower())
@@ -71,7 +84,7 @@ class HybridRetriever:
         self._reranker = CrossEncoder(RERANKER_MODEL)
         self._ready    = True
         logger.info("[Retriever] Ready.")
-        
+
         # ── Dense retrieval ───────────────────────────────────────────────────
 
     def _dense_search(
@@ -177,6 +190,75 @@ class HybridRetriever:
         ranked = sorted(candidates, key=lambda x: x["ce_score"], reverse=True)
         return ranked[:top_k]
 
+    # ── Neighbour expansion (multi-paragraph recall) ──────────────────────
+
+    def _expand_neighbors(
+        self, chunks: List[Dict[str, Any]], window: int = NEIGHBOR_WINDOW
+    ) -> List[Dict[str, Any]]:
+        """
+        For each chunk, pull its ±window contiguous siblings from the SAME source
+        document and merge them in. Point-ids are sequential per build_index, so
+        id±d are the neighbouring chunks; we guard on `source` so a neighbour is
+        only kept if it belongs to the same document as the anchor that wanted it
+        (this stops us bleeding across a document boundary at the id seam).
+
+        Newly-pulled neighbours inherit a score just below their anchor, so they
+        sort directly after it and the final ceiling trims neighbours of the
+        weakest anchors first.
+        """
+        if window <= 0 or not chunks:
+            return chunks
+
+        have = {c["id"] for c in chunks if isinstance(c.get("id"), int)}
+        want_src: Dict[int, Any] = {}    # neighbour id -> source it MUST match
+        want_score: Dict[int, float] = {}  # neighbour id -> anchor ce_score
+        for c in chunks:
+            cid = c.get("id")
+            if not isinstance(cid, int):
+                continue
+            src = (c.get("payload") or {}).get("source")
+            sc  = c.get("ce_score", 0.0)
+            for d in range(1, window + 1):
+                for nid in (cid - d, cid + d):
+                    if nid >= 0 and nid not in have:
+                        want_src[nid] = src
+                        want_score[nid] = max(want_score.get(nid, -1e9), sc)
+
+        if not want_src:
+            return chunks
+
+        try:
+            recs = self._qdrant.retrieve(
+                collection_name=QDRANT_COLLECTION,
+                ids=sorted(want_src.keys()),
+                with_payload=True,
+            )
+        except Exception as exc:
+            logger.warning(f"[Retriever] neighbour fetch failed: {exc}")
+            return chunks
+
+        added = 0
+        for rec in recs:
+            nid = rec.id
+            payload = rec.payload or {}
+            if payload.get("source") != want_src.get(nid):
+                continue  # different document at the id seam — skip
+            chunks.append({
+                "id": nid,
+                "payload": payload,
+                "rrf_score": 0.0,
+                "ce_score": want_score.get(nid, 0.0) - 0.001,
+                "is_neighbor": True,
+            })
+            added += 1
+
+        if added:
+            logger.info(
+                f"[Retriever] neighbour expansion: +{added} contiguous chunks "
+                f"(window={window})"
+            )
+        return chunks
+
     # ── Public API ────────────────────────────────────────────────────────
 
     def retrieve(
@@ -223,15 +305,24 @@ class HybridRetriever:
 
         Runs each sub-query through the full hybrid+rerank pipeline (so each
         aspect is reranked against ITS OWN sub-query, not the whole question),
-        then unions the per-sub-query top-k by chunk id. This guarantees that
-        every information need in the question is represented — e.g. a question
-        asking for both incident *classification* and *reporting timelines*
-        yields chunks for each, instead of the timeline chunks being starved by
-        the more salient classification text.
+        then selects chunks with GUARANTEED per-sub-query coverage and stitches
+        contiguous sections back together via neighbour expansion.
 
-        Dedup is by chunk id (Qdrant point id == BM25 corpus index == global
-        chunk index, since build_index assigns them in lockstep). On collision
-        we keep the higher cross-encoder score.
+        Why round-robin instead of a global score sort: a global top-N by
+        cross-encoder score lets the most salient aspect monopolise the slots —
+        e.g. the FY2022/23 Key Audit Matters chunks crowd out the FY2023/24 ones,
+        so the second year contributes nothing. Round-robin takes the #1 hit from
+        every sub-query, then the #2 from every sub-query, etc., so each
+        information need is represented before the cap is reached.
+
+        Why neighbour expansion: an answer can span several adjacent chunks (both
+        Key Audit Matters sit in contiguous chunks). Once any chunk in that block
+        is selected, pulling its id±window siblings recovers the rest of the block
+        even though those siblings ranked below the cutoff on their own.
+
+        Dedup is by chunk id (Qdrant point id == BM25 corpus index == global chunk
+        index, since build_index assigns them in lockstep). On collision we keep
+        the higher cross-encoder score.
         """
         self._ensure_ready()
 
@@ -245,19 +336,52 @@ class HybridRetriever:
         if not uniq_queries:
             return []
 
-        merged: Dict[Any, Dict[str, Any]] = {}
+        # 1. Run every sub-query; keep its ranked hits separately, and track the
+        #    best-scoring copy of each chunk for dedup.
+        per_query_hits: List[List[Dict[str, Any]]] = []
+        best: Dict[Any, Dict[str, Any]] = {}
         for q in uniq_queries:
-            for r in self.retrieve(q, top_k=per_query_k, source_types=source_types):
+            hits = self.retrieve(q, top_k=per_query_k, source_types=source_types)
+            per_query_hits.append(hits)
+            for r in hits:
                 cid = r.get("id")
-                if cid not in merged or r.get("ce_score", 0.0) > merged[cid].get("ce_score", 0.0):
-                    merged[cid] = r
+                if cid not in best or r.get("ce_score", 0.0) > best[cid].get("ce_score", 0.0):
+                    best[cid] = r
 
-        ranked = sorted(merged.values(), key=lambda x: x.get("ce_score", 0.0), reverse=True)
+        # 2. Round-robin selection — guarantees every sub-query contributes.
+        selected: Dict[Any, Dict[str, Any]] = {}
+        depth = 0
+        while len(selected) < max_total:
+            progressed = False
+            for hits in per_query_hits:
+                if depth < len(hits):
+                    cid = hits[depth]["id"]
+                    if cid not in selected:
+                        selected[cid] = best[cid]
+                        progressed = True
+                        if len(selected) >= max_total:
+                            break
+            if not progressed:
+                break
+            depth += 1
+
+        chosen = list(selected.values())
+        anchors = len(chosen)
+
+        # 3. Stitch contiguous sections back together.
+        chosen = self._expand_neighbors(chosen)
+
+        # 4. Order by relevance; neighbours sit just under their anchor. Hard
+        #    ceiling guards the token budget when the window is wide.
+        chosen.sort(key=lambda x: x.get("ce_score", 0.0), reverse=True)
+        chosen = chosen[:MULTIQUERY_HARD_CEILING]
+
         logger.info(
             f"[Retriever] multi-query: {len(uniq_queries)} sub-queries -> "
-            f"{len(ranked)} unique chunks (cap {max_total})"
+            f"{anchors} anchors (round-robin, cap {max_total}) -> "
+            f"{len(chosen)} chunks after neighbour expansion (ceiling {MULTIQUERY_HARD_CEILING})"
         )
-        return ranked[:max_total]
+        return chosen
 
     def count_emails_in_thread(self, thread_id: str) -> Optional[int]:
         """
