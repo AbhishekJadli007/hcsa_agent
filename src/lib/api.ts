@@ -1,6 +1,6 @@
 import type { ChatResponse } from '../types';
 
-export const USE_MOCK = false;
+export const USE_MOCK = true;
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
 
@@ -97,7 +97,6 @@ export async function sendMessage(message: string): Promise<ChatResponse> {
   });
 
   if (!res.ok) {
-    // Try to extract a structured error body first (our global handler returns one).
     let detail: string = res.statusText;
     try {
       const body = await res.json();
