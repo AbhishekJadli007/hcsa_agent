@@ -110,6 +110,7 @@ export function useChat() {
           timeline: response.timeline,
           claims: response.claims,
           errors: response.errors,
+          latency_ms: response.latency_ms,
         });
 
         setStreamedText('');
@@ -119,7 +120,7 @@ export function useChat() {
         addAssistantMessage(convId, `**Error:** ${errMsg}`, {
           confidence: 0,
           sources: [],
-          plan: { routes: [], search_queries: [], source_type_filter: null, reasoning: '' },
+          plan: { routes: [], search_queries: [], source_type_filter: null, reasoning: '', email_count_intent: false, thread_id: null },
           timeline: [],
           claims: [],
           errors: [errMsg],

@@ -59,6 +59,8 @@ Based on **SOP-CO-003 Section 4.2**, any work involving a fall risk exceeding **
     ],
     source_type_filter: ['sop'],
     reasoning: 'Policy and SOP documents hold permit requirements; vector search is appropriate.',
+    email_count_intent: false,
+    thread_id: null,
   },
   timeline: [
     'Planner -> routes: ["vector_agent"] | 3 sub-queries | source_filter: ["sop"]',
@@ -75,6 +77,7 @@ Based on **SOP-CO-003 Section 4.2**, any work involving a fall risk exceeding **
     { claim: 'Permits must be displayed at the workface throughout the operation.', supported: true },
   ],
   errors: [],
+  latency_ms: 1217,
 };
 
 async function sleep(ms: number) {
@@ -94,8 +97,16 @@ export async function sendMessage(message: string): Promise<ChatResponse> {
   });
 
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`API error ${res.status}: ${text || res.statusText}`);
+    // Try to extract a structured error body first (our global handler returns one).
+    let detail: string = res.statusText;
+    try {
+      const body = await res.json();
+      if (body?.errors?.length) detail = body.errors[0];
+      else if (body?.detail) detail = body.detail;
+    } catch {
+      detail = (await res.text().catch(() => res.statusText)) || res.statusText;
+    }
+    throw new Error(`API error ${res.status}: ${detail}`);
   }
 
   return res.json() as Promise<ChatResponse>;

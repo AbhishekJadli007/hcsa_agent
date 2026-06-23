@@ -13,8 +13,8 @@ export interface Plan {
   search_queries: string[];
   source_type_filter: string[] | null;
   reasoning: string;
-  email_count_intent?: boolean;
-  thread_id?: string | null;
+  email_count_intent: boolean;
+  thread_id: string | null;
 }
 
 export interface Claim {
@@ -31,6 +31,7 @@ export interface ChatResponse {
   timeline: string[];
   claims: Claim[];
   errors: string[];
+  latency_ms?: number;
 }
 
 export interface MessageMeta {
@@ -40,6 +41,7 @@ export interface MessageMeta {
   timeline: string[];
   claims: Claim[];
   errors: string[];
+  latency_ms?: number;
 }
 
 export interface Message {

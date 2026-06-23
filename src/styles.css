@@ -1172,3 +1172,26 @@ button {
   .empty-subtitle { font-size: 0.85rem; }
   .empty-state { padding: 40px 14px 24px; }
 }
+
+/* ─── Detail panel extras ────────────────────────────────────────────────── */
+.detail-panel-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.latency-badge {
+  font-size: 0.72rem;
+  color: var(--text-4);
+  font-family: ui-monospace, monospace;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+
+.route-pill-email {
+  background: var(--badge-email-bg);
+  color: var(--badge-email-text);
+  border-color: var(--badge-email-border);
+}

@@ -10,6 +10,7 @@ interface DetailPanelProps {
   timeline: string[];
   claims: Claim[];
   errors: string[];
+  latency_ms?: number;
 }
 
 type Tab = 'sources' | 'analysis';
@@ -21,6 +22,7 @@ export function DetailPanel({
   timeline,
   claims,
   errors,
+  latency_ms,
 }: DetailPanelProps) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>('sources');
@@ -31,22 +33,31 @@ export function DetailPanel({
     <div className="detail-panel">
       <div className="detail-panel-header">
         <ConfidenceBadge score={confidence} />
-        <button
-          className="detail-toggle"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-        >
-          <span>{open ? 'Hide details' : 'Show details'}</span>
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 14 14"
-            fill="none"
-            style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+        <div className="detail-panel-header-right">
+          {latency_ms !== undefined && (
+            <span className="latency-badge" title="Server-side pipeline latency">
+              {latency_ms >= 1000
+                ? `${(latency_ms / 1000).toFixed(1)}s`
+                : `${latency_ms}ms`}
+            </span>
+          )}
+          <button
+            className="detail-toggle"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
           >
-            <path d="M2 5l5 5 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
+            <span>{open ? 'Hide details' : 'Show details'}</span>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 14 14"
+              fill="none"
+              style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+            >
+              <path d="M2 5l5 5 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {errors.length > 0 && (
@@ -109,9 +120,17 @@ export function DetailPanel({
                   {plan.routes.map((r) => (
                     <span className="route-pill" key={r}>{r.replace('_agent', '')}</span>
                   ))}
+                  {plan.email_count_intent && (
+                    <span className="route-pill route-pill-email">email count</span>
+                  )}
                 </div>
                 {plan.reasoning && (
                   <p className="plan-reasoning">{plan.reasoning}</p>
+                )}
+                {plan.thread_id && (
+                  <div className="plan-filter">
+                    Thread: <code>{plan.thread_id}</code>
+                  </div>
                 )}
                 {plan.search_queries.length > 0 && (
                   <>

@@ -54,6 +54,7 @@ export function MessageBubble({ message, isStreaming, streamedText }: MessageBub
             timeline={message.meta.timeline}
             claims={message.meta.claims}
             errors={message.meta.errors}
+            latency_ms={message.meta.latency_ms}
           />
         )}
       </div>
