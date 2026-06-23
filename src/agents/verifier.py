@@ -87,20 +87,7 @@ B. REPORTING TIMELINES. When asked for reporting/notification timelines, give th
 C. CROSS-SOURCE. POL-CO-003 (policy) and SOP-CO-003 (procedure) often both cover a
    topic and sometimes state DIFFERENT figures (e.g. HCSA notification within 7
    calendar days in the SOP vs 14 days in the policy). Cite BOTH and report BOTH
-   figures explicitly rather than silently choosing one.
-D. DOMAIN FIDELITY. Only cite a rule, threshold, exception process, or approval
-   chain if its SOURCE DOCUMENT covers the SAME subject as the question. Do not
-   borrow a rule from an unrelated domain just because it superficially mentions
-   a similar word (e.g. "exception", "approval", "threshold").
-   - Contractor safety assessment scores (CSA-72, the 70-point threshold,
-     engagement/disengagement decisions) -> POL-CO-003 / SOP-CO-003 ONLY.
-   - Urban design or sustainability deviations -> POL-UD / SOP-UD ONLY.
-   - Financial reporting figures -> HDB FS-22 / HDB FS-23 ONLY.
-   If the evidence for the question's actual domain does not contain an
-   exception process, past case, or specific rule, say so explicitly:
-   "No exception process for this is described in [the relevant document] within
-   the provided records." Do NOT substitute a rule from a different policy
-   domain to fill the gap, even if it is the closest match in the evidence."""
+   figures explicitly rather than silently choosing one."""
 
 SYNTHESIS_USER_TEMPLATE = """\
 EVIDENCE CONTEXT:
@@ -121,15 +108,12 @@ RESPONSE:
 
 BATCH_VERIFY_PROMPT = """\
 You are a strict fact-checker. Decide, for each claim, whether it is supported.
-A claim is SUPPORTED if the EVIDENCE states it, OR if it restates a fact from
-the SYSTEM POLICY KNOWLEDGE block (documented domain rules the model was told
-to apply), OR if it merely restates a fact from the USER-STATED SCENARIO block
-(the user's own premises count as given facts). A claim is NOT supported if it
-adds a figure, threshold, name, or detail that appears in none of those three
-blocks. Do not rely on outside knowledge.
+A claim is SUPPORTED if the EVIDENCE states it, OR if it merely restates a fact
+from the USER-STATED SCENARIO block inside the evidence (the user's own premises
+count as given facts). A claim is NOT supported if it adds a figure, threshold,
+name, or detail that appears in neither. Do not rely on outside knowledge.
 
-EVIDENCE (includes retrieved chunks, SYSTEM POLICY KNOWLEDGE, and USER-STATED
-SCENARIO, separated by "---"):
+EVIDENCE:
 {context}
 
 CLAIMS:
@@ -269,24 +253,12 @@ class VerifierAgent:
             }
 
         # Stage 2: decompose + batch-verify claims. The verification context adds
-        # two things as "given facts" the model is not penalised for restating:
-        #   1. The user's own scenario (e.g. "the worker fell 2.5m").
-        #   2. The DOMAIN RULES baked into HCSA_SYSTEM_PROMPT. The synthesiser is
-        #      explicitly instructed to state domain facts from these rules (e.g.
-        #      "Document IC-65", the one-hour classification window, the CSA-72
-        #      threshold) — but those facts live in the system prompt, not
-        #      necessarily verbatim in whatever chunk got retrieved. Without this,
-        #      the verifier was marking correct, instructed answers as
-        #      "unsupported" simply because it never saw the rule the model was
-        #      told to apply, which deflated faithfulness scores on SOP questions.
-        domain_rules = HCSA_SYSTEM_PROMPT.split("DOMAIN RULES:", 1)
-        domain_rules_text = ("DOMAIN RULES:" + domain_rules[1]) if len(domain_rules) > 1 else ""
+        # the user's own scenario as given premises, so the model is not penalised
+        # for restating facts the user supplied (e.g. "the worker fell 2.5m").
         claims = self._decompose(response)
         logger.info(f"[Verifier] {len(claims)} claims to verify (batched)")
         verify_context = (
             f"{context_str}\n\n---\n\n"
-            f"[SYSTEM POLICY KNOWLEDGE — the model was instructed to apply these "
-            f"rules; treat them as given facts]\n{domain_rules_text}\n\n---\n\n"
             f"[USER-STATED SCENARIO — treat these as given facts]\n{query}"
         )
         verdicts = self._verify_claims_batch(claims, verify_context) if claims else []
